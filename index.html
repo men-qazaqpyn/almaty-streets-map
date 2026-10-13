@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Улицы Алматы: живая история</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #map { position: absolute; top: 0; left: 0; right: 400px; bottom: 0; }
+  #panel {
+    position: absolute; top: 0; right: 0; width: 400px; height: 100%;
+    background: #14161a; color: #f0f0f0; box-sizing: border-box;
+    padding: 26px 24px; overflow-y: auto; box-shadow: -4px 0 16px rgba(0,0,0,0.25);
+  }
+  #panel h1 { font-size: 18px; margin: 0 0 4px; color: #9fd3ff; }
+  #panel .subtitle { font-size: 13px; color: #9099a6; margin-bottom: 14px; }
+
+  /* Filters */
+  #filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .filter-chip {
+    font-size: 12px; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #3a4250; color: #b7bfcb; background: transparent; user-select: none;
+  }
+  .filter-chip:hover { background: #1e2229; }
+  .filter-chip.active { background: #2f6fb0; border-color: #2f6fb0; color: #fff; }
+
+  /* Street list */
+  .street-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 0 -12px; border-radius: 8px; cursor: pointer; }
+  .street-item:hover { background: #1e2229; }
+  .si-avatar {
+    width: 52px; height: 52px; border-radius: 50%; object-fit: cover; object-position: top center; flex-shrink: 0;
+    background: #2a2f38; display: flex; align-items: center; justify-content: center;
+    font-size: 17px; color: #7a8290; font-weight: 600;
+  }
+  .street-item .si-name { font-size: 14.5px; font-weight: 600; }
+  .street-item .si-person { font-size: 12px; color: #9099a6; margin-top: 1px; }
+  .empty-note { color: #7a8290; font-size: 13px; padding: 20px 0; }
+
+  /* Detail view */
+  .back-btn {
+    display: inline-block; background: none; border: 1px solid #3a4250; color: #9fd3ff;
+    border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; margin-bottom: 18px;
+  }
+  .back-btn:hover { background: #1e2229; }
+  .portrait-banner {
+    width: 100%; height: 200px; object-fit: cover; object-position: top center;
+    border-radius: 12px; margin-bottom: 16px; background: #2a2f38; display: block;
+  }
+  .portrait-banner-placeholder {
+    width: 100%; height: 120px; border-radius: 12px; margin-bottom: 16px;
+    background: #22262e; display: flex; align-items: center; justify-content: center;
+    font-size: 40px; color: #454d59; font-weight: 700;
+  }
+  .portrait-wrap { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+  .portrait-lg {
+    width: 96px; height: 96px; border-radius: 50%; object-fit: cover; object-position: top center; flex-shrink: 0;
+    background: #2a2f38; display: flex; align-items: center; justify-content: center;
+    font-size: 28px; color: #7a8290; font-weight: 600; border: 2px solid #2f3742;
+  }
+  .street-name { font-size: 20px; font-weight: 700; margin: 0 0 2px; }
+  .person-name { font-size: 15.5px; color: #ffd479; margin: 0 0 4px; }
+  .role { font-size: 13.5px; color: #9fd3ff; }
+  .section h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #7a8290; margin: 18px 0 6px;
+  }
+  .section p { font-size: 14.5px; line-height: 1.6; color: #d8dce2; margin: 0; }
+  .works-list { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; color: #d8dce2; }
+  .sources { margin-top: 18px; }
+  .sources a { color: #6fa8dc; font-size: 12.5px; display: block; margin-top: 4px; word-break: break-all; }
+  .back-hint { display: block; margin-top: 20px; font-size: 12px; color: #545c68; line-height: 1.5; }
+  .close-hint { font-size: 12px; color: #545c68; margin-left: 10px; }
+  .leaflet-interactive { cursor: pointer; }
+  .tile-warning {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    background: #2b2018; color: #ffd479; border: 1px solid #6b5327; border-radius: 8px;
+    padding: 10px 16px; font-size: 13px; max-width: 420px; text-align: center;
+  }
+
+  @media (max-width: 800px) {
+    #map { right: 0; bottom: 45%; }
+    #panel { top: auto; width: 100%; height: 45%; bottom: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>Улицы Алматы: живая история</h1>
+  <div class="subtitle" id="subtitle"></div>
+  <div id="filters"></div>
+  <div id="content"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- ?v= is a cache-buster: bump it (or use the file mtime) whenever streets-data.js changes -->
+<script src="streets-data.js?v=63"></script>
+<script>
+  const map = L.map('map', { zoomControl: true }).setView([43.245, 76.90], 12);
+
+  // Esri World Street Map. NOTE: the public OSM tile servers (tile.openstreetmap.org)
+  // return 403 "Access blocked" for apps, and CARTO's basemaps now require an API key,
+  // so neither is usable here. For the public launch, switch to a keyed provider
+  // (MapTiler / Stadia free tier) and put the key in a config constant below.
+  const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri | Данные улиц &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+
+  // If the basemap fails to load, tell the user instead of showing a blank/broken map.
+  let tileErrors = 0;
+  tiles.on('tileerror', () => {
+    if (++tileErrors === 5) {
+      const warn = document.createElement('div');
+      warn.className = 'tile-warning';
+      warn.textContent = 'Подложка карты не загружается. Улицы и карточки работают, попробуйте обновить страницу.';
+      document.getElementById('map').appendChild(warn);
+    }
+  });
+
+  const content = document.getElementById('content');
+  document.getElementById('subtitle').textContent =
+    `Прототип · ${STREETS.length} улиц · нажмите на улицу на карте или выберите из списка`;
+
+  const BASE   = { color: '#3d8ee0', weight: 5, opacity: 0.6, lineCap: 'round' };
+  const HOVER  = { color: '#2f7fd1', weight: 9, opacity: 0.9 };
+  const ACTIVE = { color: '#ffb020', weight: 9, opacity: 0.95 };
+  const HIT    = { color: '#000', weight: 20, opacity: 0.003, lineCap: 'round' };
+  const DIMMED = { color: '#3d8ee0', weight: 3, opacity: 0.12, lineCap: 'round' };
+
+  let activeStreet = null;
+  let activeFilter = 'all';
+
+  function initials(name) {
+    return (name.match(/[А-ЯЁA-Z]/g) || []).slice(0, 2).join('');
+  }
+
+  function avatarHtml(street, cls) {
+    if (street.portrait) return `<img class="${cls}" src="${street.portrait}" alt="">`;
+    return `<div class="${cls}">${initials(street.person)}</div>`;
+  }
+
+  function bannerHtml(street) {
+    if (street.portrait) return `<img class="portrait-banner" src="${street.portrait}" alt="">`;
+    return `<div class="portrait-banner-placeholder">${initials(street.person)}</div>`;
+  }
+
+  function visibleStreets() {
+    return activeFilter === 'all' ? STREETS : STREETS.filter(s => s.category === activeFilter);
+  }
+
+  function renderFilters() {
+    const cats = [['all', 'Все']];
+    const seen = new Set();
+    STREETS.forEach(s => { if (!seen.has(s.category)) { seen.add(s.category); cats.push([s.category, s.categoryLabel]); } });
+    document.getElementById('filters').innerHTML = cats.map(([key, label]) => `
+      <div class="filter-chip ${key === activeFilter ? 'active' : ''}" onclick="setFilter('${key}')">${label}</div>
+    `).join('');
+  }
+
+  function setFilter(key) {
+    activeFilter = key;
+    renderFilters();
+    applyDimming();
+    renderList();
+  }
+
+  function applyDimming() {
+    STREETS.forEach(s => {
+      if (s === activeStreet) return;
+      const visible = activeFilter === 'all' || s.category === activeFilter;
+      s._visible.setStyle(visible ? BASE : DIMMED);
+    });
+  }
+
+  function renderList() {
+    const list = visibleStreets();
+    if (!list.length) {
+      content.innerHTML = `<div class="empty-note">В этой категории пока нет улиц.</div>`;
+      return;
+    }
+    content.innerHTML = list.map(s => {
+      const idx = STREETS.indexOf(s);
+      return `
+      <div class="street-item" onclick="selectStreet(${idx}, true); event.stopPropagation();">
+        ${avatarHtml(s, 'si-avatar')}
+        <div>
+          <div class="si-name">${s.name}</div>
+          <div class="si-person">${s.person}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function selectStreet(i, zoom) {
+    const street = STREETS[i];
+    if (activeStreet && activeStreet !== street) activeStreet._visible.setStyle(BASE);
+    activeStreet = street;
+    street._visible.setStyle(ACTIVE);
+    street._visible.bringToFront();
+    if (zoom) map.fitBounds(street._visible.getBounds(), { padding: [40, 40] });
+
+    const sources = (street.sources || []).map(u =>
+      `<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//,'').slice(0, 60)}…</a>`).join('');
+
+    const worksBlock = (street.works && street.works.length)
+      ? `<h3>Труды и произведения</h3><ul class="works-list">${street.works.map(w => `<li>${w}</li>`).join('')}</ul>`
+      : '';
+
+    content.innerHTML = `
+      <button class="back-btn" onclick="renderList(); event.stopPropagation();">← Все улицы</button><span class="close-hint">или кликните по пустому месту карты / Esc</span>
+      ${bannerHtml(street)}
+      <div class="portrait-wrap">
+        ${avatarHtml(street, 'portrait-lg')}
+        <div>
+          <div class="street-name">${street.name}</div>
+          <div class="person-name">${street.person}</div>
+          <div class="role">${street.role}</div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Чем прославился</h3><p>${street.famous}</p>
+        <h3>Связь с Казахстаном и Алматы</h3><p>${street.kz}</p>
+        <h3>Почему улица носит это имя</h3><p>${street.why}</p>
+        ${worksBlock}
+      </div>
+      <div class="sources"><h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#7a8290;margin:0 0 2px;">Источники</h3>${sources || '<span style="color:#545c68;font-size:12.5px;">—</span>'}</div>
+      <span class="back-hint">Геометрия улиц — OpenStreetMap. Портреты — Wikipedia/Wikimedia Commons. Справки — на основе открытых источников; ключевые даты выборочно проверены (июль 2026), перед публикацией нужна полная редакторская проверка.</span>
+    `;
+    document.getElementById('panel').scrollTop = 0;
+  }
+
+  function distToSegmentSq(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const lenSq = dx*dx + dy*dy;
+    let t = lenSq ? ((p.x - a.x)*dx + (p.y - a.y)*dy) / lenSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    const px = a.x + t*dx - p.x, py = a.y + t*dy - p.y;
+    return px*px + py*py;
+  }
+
+  function nearestStreetIndex(containerPoint, maxPx) {
+    let best = -1, bestD = maxPx * maxPx;
+    STREETS.forEach((street, i) => {
+      if (activeFilter !== 'all' && street.category !== activeFilter) return;
+      for (const seg of street.segments) {
+        let prev = null;
+        for (const c of seg) {
+          const pt = map.latLngToContainerPoint(c);
+          if (prev) {
+            const d = distToSegmentSq(containerPoint, prev, pt);
+            if (d < bestD) { bestD = d; best = i; }
+          }
+          prev = pt;
+        }
+      }
+    });
+    return best;
+  }
+
+  STREETS.forEach((street, i) => {
+    street._visible = L.polyline(street.segments, BASE).addTo(map);
+    const hit = L.polyline(street.segments, HIT).addTo(map);
+    hit.bindTooltip(street.name, { sticky: true });
+    hit.on('mouseover', () => { if (street !== activeStreet) street._visible.setStyle(HOVER); });
+    hit.on('mouseout',  () => { if (street !== activeStreet) street._visible.setStyle(activeFilter === 'all' || street.category === activeFilter ? BASE : DIMMED); });
+    hit.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      const idx = nearestStreetIndex(e.containerPoint, 25);
+      if (idx >= 0) selectStreet(idx, false);
+    });
+  });
+
+  map.on('click', () => { if (activeStreet) { activeStreet = null; applyDimming(); renderList(); } });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && activeStreet) { activeStreet._visible.setStyle(BASE); activeStreet = null; applyDimming(); renderList(); }
+  });
+
+  renderFilters();
+  renderList();
+</script>
+</body>
+</html>
